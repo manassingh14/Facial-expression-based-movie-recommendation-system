@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+fer
+opencv-python-headless
+numpy
+pandas
+scikit-learn
