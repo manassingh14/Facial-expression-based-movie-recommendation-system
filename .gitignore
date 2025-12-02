@@ -7,6 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+ml_service/TMDB_movie_dataset_v11.csv
 node_modules
 dist
 dist-ssr

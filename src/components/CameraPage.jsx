@@ -1,15 +1,29 @@
 import * as faceapi from "face-api.js";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const CameraPage = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const detectionIntervalRef = useRef(null);
+  const streamRef = useRef(null);
   const [capturing, setCapturing] = useState(false);
   const [detectedEmotion, setDetectedEmotion] = useState(""); // New state
   const [recommendations, setRecommendations] = useState([]); // New state
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/login", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   // Load models once when component mounts
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const loadModels = async () => {
       try {
         await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
@@ -22,7 +36,16 @@ const CameraPage = () => {
       }
     };
     loadModels();
-  }, []);
+
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [isAuthenticated]);
 
   // Start webcam video
   const startVideo = () => {
@@ -30,6 +53,7 @@ const CameraPage = () => {
       .getUserMedia({ video: true })
       .then((stream) => {
         const video = videoRef.current;
+        streamRef.current = stream;
         if (video) video.srcObject = stream;
       })
       .catch((err) => console.error("Error accessing camera:", err));
@@ -59,7 +83,11 @@ const CameraPage = () => {
     const displaySize = { width: video.width, height: video.height };
     faceapi.matchDimensions(canvas, displaySize);
 
-    setInterval(async () => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+    }
+
+    detectionIntervalRef.current = setInterval(async () => {
       if (capturing) return;
 
       const detections = await faceapi
@@ -88,41 +116,79 @@ const CameraPage = () => {
     }, 1000);
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center mt-10">
+        <h1 className="text-3xl font-bold mb-6">Please log in</h1>
+        <p>You must be signed in to access emotion-based recommendations.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center mt-10">
-      <h1 className="text-3xl font-bold mb-6">Emotion Detection</h1>
-      <div className="relative">
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          width="640"
-          height="480"
-          onPlay={handleVideoPlay}
-          className="rounded-lg shadow-lg"
-        />
-        <canvas
-          ref={canvasRef}
-          width="640"
-          height="480"
-          className="absolute top-0 left-0"
-        />
+    <div 
+      className="min-h-screen w-full py-10 px-4"
+      style={{
+        background: 'linear-gradient(135deg, #1E3C72, #2A5298)'
+      }}
+    >
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-4xl font-bold mb-8 text-white text-center drop-shadow-lg">
+          Emotion Detection
+        </h1>
+        
+        <div className="flex flex-col lg:flex-row gap-8 items-start justify-center mb-10">
+          <div className="relative">
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              width="640"
+              height="480"
+              onPlay={handleVideoPlay}
+              className="rounded-lg shadow-2xl"
+            />
+            <canvas
+              ref={canvasRef}
+              width="640"
+              height="480"
+              className="absolute top-0 left-0 rounded-lg"
+            />
+          </div>
+        </div>
+
+        {/* Display detected emotion and recommendations */}
+        {detectedEmotion && (
+          <div className="mt-8">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-white mb-2 drop-shadow-lg">
+                Detected Emotion: <span className="text-yellow-300 capitalize">{detectedEmotion}</span>
+              </h2>
+              <h3 className="text-2xl font-semibold text-white mt-4 mb-6">Movies:</h3>
+            </div>
+            
+            {/* Movie cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {recommendations.map((movie, index) => (
+                <div
+                  key={index}
+                  className="bg-[#1e3a8a] rounded-lg p-6 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-2"
+                  style={{
+                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(30, 58, 138, 0.5)'
+                  }}
+                >
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-white font-semibold text-center text-lg">
+                      {movie}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Display detected emotion */}
-      {detectedEmotion && (
-        <div className="mt-4 text-center">
-          <h2 className="text-xl font-semibold">
-            Detected Emotion: {detectedEmotion}
-          </h2>
-          <h3 className="text-lg font-medium mt-2">Movie Recommendations:</h3>
-          <ul className="list-disc list-inside mt-1">
-            {recommendations.map((movie, index) => (
-              <li key={index}>{movie}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 };
